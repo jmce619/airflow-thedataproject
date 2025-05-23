@@ -1,0 +1,29 @@
+name: Deploy to MWAA
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install AWS CLI
+        run: pip install awscli
+
+      - name: Sync DAGs
+        run: aws s3 sync dags/ s3://${{ secrets.MWAA_BUCKET }}/dags/ --delete
+        env:
+          AWS_REGION:          ${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Upload requirements.txt
+        run: aws s3 cp requirements.txt s3://${{ secrets.MWAA_BUCKET }}/requirements.txt
+        env:
+          AWS_REGION:          ${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
