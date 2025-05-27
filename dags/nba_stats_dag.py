@@ -46,6 +46,10 @@ with DAG(
         task_id="fetch_and_load_nba_stats",
         python_callable=run_etl,
     )
-
-    # Ensure the ETL only runs if the Internet test passes
-    test_internet >> etl_task
+    print_conn = PythonOperator(
+        task_id="print_redshift_uri",
+        python_callable=lambda: print(
+            BaseHook.get_connection("redshift_default").get_uri()
+        ),
+    )
+    test_internet >> print_conn >> etl_task
