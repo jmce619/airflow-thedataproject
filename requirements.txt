@@ -1,8 +1,6 @@
-apache-airflow
 pandas
 requests
 tqdm
 nba_api
 sqlalchemy
 psycopg2-binary
-SQLAlchemy
