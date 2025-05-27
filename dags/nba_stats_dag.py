@@ -9,9 +9,21 @@ from sqlalchemy import create_engine
 from scripts.nba_stats import fetch_and_load
 
 def run_etl():
-    # Pull connection info from Airflow Connections (Conn Id: 'redshift_default')
+    # 1) Get the connection URI from Airflow
     conn = BaseHook.get_connection("redshift_default")
-    engine = create_engine(conn.get_uri())
+    raw_uri = conn.get_uri()  
+    # e.g. "postgres://admin:pw@host:5439/dev"
+    
+    # 2) Normalize it to a SQLAlchemy‐compatible form
+    if raw_uri.startswith("postgres://"):
+        uri = "postgresql+psycopg2://" + raw_uri[len("postgres://"):]
+    elif raw_uri.startswith("postgresql://"):
+        uri = raw_uri.replace("postgresql://", "postgresql+psycopg2://", 1)
+    else:
+        uri = raw_uri
+    
+    # 3) Build the engine and run your ETL
+    engine = create_engine(uri)
     fetch_and_load(engine)
 
 default_args = {
@@ -35,7 +47,7 @@ with DAG(
     test_internet = BashOperator(
         task_id="test_internet",
         bash_command=(
-            "curl -I https://stats.nba.com -m 10 "
+            "curl -IL https://stats.nba.com -m 10 "
             "&& echo 'Internet OK' "
             "|| (echo 'Internet check failed' && exit 1)"
         )
@@ -46,10 +58,6 @@ with DAG(
         task_id="fetch_and_load_nba_stats",
         python_callable=run_etl,
     )
-    print_conn = PythonOperator(
-        task_id="print_redshift_uri",
-        python_callable=lambda: print(
-            BaseHook.get_connection("redshift_default").get_uri()
-        ),
-    )
-    test_internet >> print_conn >> etl_task
+
+    # Wire them together
+    test_internet >> etl_task
