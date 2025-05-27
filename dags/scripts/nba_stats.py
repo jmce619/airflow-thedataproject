@@ -25,7 +25,7 @@ TARGET_PLAYERS = [
 def fetch_player_stats(name: str) -> dict | None:
     matches = players.find_players_by_full_name(name)
     if not matches:
-        print(f"⚠️ Player '{name}' not found.")
+        print(f"Player '{name}' not found.")
         return None
 
     pid = matches[0]["id"]
