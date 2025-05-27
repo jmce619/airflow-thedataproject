@@ -67,7 +67,7 @@ def fetch_and_load():
             player_data.append(data)
 
     if not player_data:
-        print("⚠️ No data fetched, exiting.")
+        print(" No data fetched, exiting.")
         return
 
     df = pd.DataFrame(player_data)
