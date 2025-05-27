@@ -23,7 +23,7 @@ default_args = {
 }
 
 with DAG(
-    dag_id="nba_stats_to_redshift",
+    dag_id="nba_stats_to_redsht",
     default_args=default_args,
     description="Fetch NBA stats daily and load into Redshift",
     schedule_interval="0 2 * * *",      # every day at 02:00 UTC

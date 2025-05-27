@@ -10,7 +10,7 @@ from requests.exceptions import ReadTimeout
 REDSHIFT_URL = os.getenv("REDSHIFT_URL")
 if not REDSHIFT_URL:
     raise RuntimeError("REDSHIFT_URL environment variable is not set")
-
+''
 TARGET_PLAYERS = [
     "LeBron James","Stephen Curry","Kevin Durant","Giannis Antetokounmpo",
     "Kawhi Leonard","James Harden","Nikola Jokic","Luka Doncic",
@@ -54,7 +54,7 @@ def fetch_player_stats(name: str) -> dict | None:
         except ReadTimeout:
             print(f"⏳ Timeout fetching stats for {name}, retry {attempt+1}/3")
         except Exception as e:
-            print(f"⚠️ Failed to fetch stats for {name}: {e}")
+            print(f"Failed to fetch stats for {name}: {e}")
             return None
 
     return {**profile, **season_stats}
