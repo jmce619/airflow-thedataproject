@@ -1,9 +1,20 @@
+import os
 import pandas as pd
+from typing import Optional, Dict
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import commonplayerinfo, playercareerstats
 from sqlalchemy import text
 from tqdm import tqdm
 from requests.exceptions import ReadTimeout
+
+# emulate a browser UA so the NBA servers don’t throttle/block us
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/114.0.0.0 Safari/537.36"
+    )
+}
 
 # List of target players
 TARGET_PLAYERS = [
@@ -17,7 +28,7 @@ TARGET_PLAYERS = [
     "Jaylen Brown","Shai Gilgeous-Alexander"
 ]
 
-def fetch_player_stats(name: str) -> dict | None:
+def fetch_player_stats(name: str) -> Optional[Dict]:
     """Fetch profile + latest season stats for a given player name."""
     matches = players.find_players_by_full_name(name)
     if not matches:
@@ -25,45 +36,65 @@ def fetch_player_stats(name: str) -> dict | None:
         return None
 
     pid = matches[0]["id"]
-    try:
-        info_df = commonplayerinfo.CommonPlayerInfo(player_id=pid).get_data_frames()[0]
-        profile = info_df.iloc[0][[
-            "DISPLAY_FIRST_LAST",
-            "TEAM_ABBREVIATION",
-            "POSITION",
-            "HEIGHT",
-            "WEIGHT"
-        ]].to_dict()
-    except Exception as e:
-        print(f"⚠️ Failed to fetch profile for {name}: {e}")
+
+    # 1) Retry profile fetch up to 3 times, with a longer timeout
+    profile = None
+    for attempt in range(1, 4):
+        try:
+            df = commonplayerinfo.CommonPlayerInfo(
+                player_id=pid,
+                timeout=60,       # 60 s socket timeout
+                headers=HEADERS
+            ).get_data_frames()[0]
+            profile = df.iloc[0][[
+                "DISPLAY_FIRST_LAST",
+                "TEAM_ABBREVIATION",
+                "POSITION",
+                "HEIGHT",
+                "WEIGHT"
+            ]].to_dict()
+            break
+        except ReadTimeout:
+            print(f"⏳ Timeout fetching profile for {name}, retry {attempt}/3")
+        except Exception as e:
+            print(f"⚠️ Failed to fetch profile for {name}: {e}")
+            return None
+    if profile is None:
+        print(f"⚠️ Could not fetch profile for {name} after 3 tries.")
         return None
 
+    # 2) Retry career stats up to 5 times
     season_stats = {}
-    for attempt in range(3):
+    for attempt in range(1, 6):
         try:
-            career_df = playercareerstats.PlayerCareerStats(player_id=pid).get_data_frames()[0]
-            latest = career_df.iloc[-1]
+            df = playercareerstats.PlayerCareerStats(
+                player_id=pid,
+                timeout=60,
+                headers=HEADERS
+            ).get_data_frames()[0]
+            latest = df.iloc[-1]
             season_stats = latest[[
                 "SEASON_ID", "GP", "PTS", "REB", "AST",
                 "FG_PCT", "FG3_PCT", "FT_PCT"
             ]].to_dict()
-            # convert to percentages
+            # convert to proper percentages
             season_stats["FG_PCT"]  *= 100
             season_stats["FG3_PCT"] *= 100
             season_stats["FT_PCT"]  *= 100
             break
         except ReadTimeout:
-            print(f"⏳ Timeout fetching stats for {name}, retry {attempt+1}/3")
+            print(f"⏳ Timeout fetching stats for {name}, retry {attempt}/5")
         except Exception as e:
             print(f"⚠️ Failed to fetch stats for {name}: {e}")
             return None
+    else:
+        print(f"⚠️ Could not fetch stats for {name} after 5 tries.")
+        return None
 
     return {**profile, **season_stats}
 
 def fetch_and_load(engine):
-    """
-    Main entrypoint: fetch all player stats and load into Redshift via the given engine.
-    """
+    """Main entrypoint: fetch all player stats and load into Redshift."""
     player_data = []
     for name in tqdm(TARGET_PLAYERS, desc="Fetching NBA stats"):
         data = fetch_player_stats(name)
@@ -75,11 +106,8 @@ def fetch_and_load(engine):
         return
 
     df = pd.DataFrame(player_data)
-
     with engine.connect() as conn:
-        # clear out the old rows
         conn.execute(text("DELETE FROM nba_player_stats"))
-        # bulk insert new data
         df.to_sql(
             name="nba_player_stats",
             con=engine,
