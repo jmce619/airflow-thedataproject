@@ -52,7 +52,7 @@ def fetch_player_stats(name: str) -> dict | None:
             season_stats["FT_PCT"]  *= 100
             break
         except ReadTimeout:
-            print(f"⏳ Timeout fetching stats for {name}, retry {attempt+1}/3")
+            print(f"Timeout fetching stats for {name}, retry {attempt+1}/3")
         except Exception as e:
             print(f"Failed to fetch stats for {name}: {e}")
             return None
