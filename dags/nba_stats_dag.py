@@ -4,7 +4,6 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.hooks.base import BaseHook
 
-# import your ETL function
 from scripts.nba_stats import fetch_and_load
 
 def get_redshift_url(conn_id="redshift_default"):

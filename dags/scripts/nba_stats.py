@@ -82,7 +82,7 @@ def fetch_and_load():
             method="multi"
         )
 
-    print(f"✅ Loaded {len(df)} records into Redshift")
+    print(f"Loaded {len(df)} records into Redshift")
 
 if __name__ == "__main__":
     fetch_and_load()
