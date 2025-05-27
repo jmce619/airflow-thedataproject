@@ -1,18 +1,17 @@
 from datetime import datetime, timedelta
-import os
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.hooks.base import BaseHook
+from sqlalchemy import create_engine
 
+# Import your ETL function
 from scripts.nba_stats import fetch_and_load
 
-def get_redshift_url(conn_id="redshift_default"):
-    conn = BaseHook.get_connection(conn_id)
-    return conn.get_uri()
-
 def run_etl():
-    os.environ["REDSHIFT_URL"] = get_redshift_url()
-    fetch_and_load()
+    # Pull connection info from Airflow Connections (Conn Id: 'redshift_default')
+    conn = BaseHook.get_connection("redshift_default")
+    engine = create_engine(conn.get_uri())  
+    fetch_and_load(engine)
 
 default_args = {
     "owner": "airflow",
@@ -22,10 +21,10 @@ default_args = {
 }
 
 with DAG(
-    dag_id="nba_stats_to_redsht",
+    dag_id="nba_stats_to_redshift",
     default_args=default_args,
-    description="Fetch NBA stats daily and load into Redshift",
-    schedule_interval="0 2 * * *",      # every day at 02:00 UTC
+    description="Fetch NBA stats daily and load into Redshift Serverless",
+    schedule_interval="0 2 * * *",     # Daily at 02:00 UTC
     start_date=datetime(2025, 5, 24),
     catchup=False,
     tags=["nba", "redshift"],
