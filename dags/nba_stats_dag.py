@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from airflow import DAG
+from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.hooks.base import BaseHook
 from sqlalchemy import create_engine
@@ -10,7 +11,7 @@ from scripts.nba_stats import fetch_and_load
 def run_etl():
     # Pull connection info from Airflow Connections (Conn Id: 'redshift_default')
     conn = BaseHook.get_connection("redshift_default")
-    engine = create_engine(conn.get_uri())  
+    engine = create_engine(conn.get_uri())
     fetch_and_load(engine)
 
 default_args = {
@@ -30,7 +31,21 @@ with DAG(
     tags=["nba", "redshift"],
 ) as dag:
 
+    # 1) Smoke-test external Internet access
+    test_internet = BashOperator(
+        task_id="test_internet",
+        bash_command=(
+            "curl -I https://stats.nba.com -m 10 "
+            "&& echo 'Internet OK' "
+            "|| (echo 'Internet check failed' && exit 1)"
+        )
+    )
+
+    # 2) Run the ETL
     etl_task = PythonOperator(
         task_id="fetch_and_load_nba_stats",
         python_callable=run_etl,
     )
+
+    # Ensure the ETL only runs if the Internet test passes
+    test_internet >> etl_task
