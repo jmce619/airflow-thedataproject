@@ -35,7 +35,7 @@ def fetch_player_stats(name: str) -> dict | None:
             "DISPLAY_FIRST_LAST","TEAM_ABBREVIATION","POSITION","HEIGHT","WEIGHT"
         ]].to_dict()
     except Exception as e:
-        print(f"⚠️ Failed to fetch profile for {name}: {e}")
+        print(f"Failed to fetch profile for {name}: {e}")
         return None
 
     season_stats = {}
