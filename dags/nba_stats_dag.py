@@ -1,28 +1,34 @@
-from datetime import datetime, timedelta
+# dags/nba_stats_to_redshift_qc.py
+from __future__ import annotations
+
+import requests
+from datetime import timedelta
+
+import pendulum
+from sqlalchemy import create_engine, text
+
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.hooks.base import BaseHook
-from sqlalchemy import create_engine, text
-import requests
 
 from scripts.nba_stats import fetch_and_load, fetch_player_stats
 
-# reuse the same headers for QC
+# Reuse the same headers for QC
 API_HEADERS = {
-    "Accept":             "application/json, text/plain, */*",
-    "Accept-Language":    "en-US,en;q=0.5",
-    "Connection":         "keep-alive",
-    "Host":               "stats.nba.com",
-    "Origin":             "https://stats.nba.com",
-    "Referer":            "https://stats.nba.com/",
-    "User-Agent":         (
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.5",
+    "Connection": "keep-alive",
+    "Host": "stats.nba.com",
+    "Origin": "https://stats.nba.com",
+    "Referer": "https://stats.nba.com/",
+    "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/114.0.0.0 Safari/537.36"
     ),
     "x-nba-stats-origin": "stats",
-    "x-nba-stats-token":  "true",
+    "x-nba-stats-token": "true",
 }
 
 def normalize_uri(raw_uri: str) -> str:
@@ -33,14 +39,14 @@ def normalize_uri(raw_uri: str) -> str:
     return raw_uri
 
 def basic_http_check():
-    resp = requests.get("https://stats.nba.com", timeout=5)
+    resp = requests.get("https://stats.nba.com", timeout=10, headers={"User-Agent": API_HEADERS["User-Agent"]})
     if resp.status_code >= 400:
         raise RuntimeError(f"HTTP {resp.status_code} from stats.nba.com")
     print("QC OK: basic HTTP GET succeeded")
 
 def nba_api_endpoint_check():
     url = "https://stats.nba.com/stats/commonplayerinfo?PlayerID=2544"
-    resp = requests.get(url, headers=API_HEADERS, timeout=15)
+    resp = requests.get(url, headers=API_HEADERS, timeout=20)
     if resp.status_code != 200:
         raise RuntimeError(f"NBA-API returned {resp.status_code}")
     print("QC OK: NBA API endpoint returned 200")
@@ -53,8 +59,7 @@ def qc_fetch_profile():
 
 def qc_redshift_conn():
     conn = BaseHook.get_connection("redshift_default")
-    raw_uri = conn.get_uri()
-    uri = normalize_uri(raw_uri)
+    uri = normalize_uri(conn.get_uri())
     engine = create_engine(uri)
     with engine.connect() as cn:
         if cn.execute(text("SELECT 1")).scalar() != 1:
@@ -76,11 +81,13 @@ default_args = {
 
 with DAG(
     dag_id="nba_stats_to_redshift_qc",
-    default_args=default_args,
     description="NBA→Redshift with QC steps",
-    schedule_interval=None,
-    start_date=datetime(2025, 5, 24),
+    # Airflow 3.x: use `schedule` (not schedule_interval)
+    schedule=None,
+    start_date=pendulum.datetime(2025, 5, 24, tz="UTC"),
     catchup=False,
+    default_args=default_args,
+    tags=["nba", "redshift", "qc"],
 ) as dag:
 
     test_internet = BashOperator(
@@ -117,9 +124,4 @@ with DAG(
         python_callable=run_etl,
     )
 
-    test_internet \
-        >> http_check \
-        >> api_check \
-        >> qc_profile \
-        >> qc_conn \
-        >> etl
+    test_internet >> http_check >> api_check >> qc_profile >> qc_conn >> etl
